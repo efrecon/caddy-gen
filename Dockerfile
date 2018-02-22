@@ -1,8 +1,21 @@
-FROM alpine:3.6
+#
+# First Pass, build (makes plugins available)
+FROM abiosoft/caddy:builder as builder
+
+ARG CADDY_VERSION="0.10.11"
+ARG CADDY_PLUGINS="git"
+
+RUN VERSION=${CADDY_VERSION} PLUGINS=${CADDY_PLUGINS} /bin/sh /usr/bin/builder.sh
+
+#
+# Second pass, restart from minimal image and add necessary binaries.
+FROM alpine:3.7
 
 LABEL maintainer="Nikita Sobolev <sobolevn@wemake.services>"
+LABEL CADDY_VERSION="0.10.11"
 
-ARG CADDY_VERSION="0.10.10"
+COPY --from=builder /install/caddy /usr/bin/caddy
+
 ARG FOREGO_VERSION="0.16.1"
 ARG DOCKER_GEN_VERSION="0.7.3"
 
@@ -28,18 +41,13 @@ RUN apk update && apk upgrade \
 
 RUN wget --quiet "https://github.com/jwilder/docker-gen/releases/download/$DOCKER_GEN_VERSION/docker-gen-alpine-linux-amd64-$DOCKER_GEN_VERSION.tar.gz" \
   && tar -C /usr/bin -xvzf "docker-gen-alpine-linux-amd64-$DOCKER_GEN_VERSION.tar.gz" \
-  && rm "/docker-gen-alpine-linux-amd64-$DOCKER_GEN_VERSION.tar.gz"
-
-
- # Install Caddy
-
-RUN curl --silent --show-error --fail --location \
-      --header "Accept: application/tar+gzip, application/x-gzip, application/octet-stream" -o - \
-      "https://github.com/mholt/caddy/releases/download/v${CADDY_VERSION}/caddy_v${CADDY_VERSION}_linux_amd64.tar.gz" \
-    | tar --no-same-owner -C /usr/bin -xz \
-  && chmod 0755 /usr/bin/caddy \
-  && /usr/bin/caddy -version \
+  && rm "/docker-gen-alpine-linux-amd64-$DOCKER_GEN_VERSION.tar.gz" \
   && apk del .build-dependencies
+
+# validate caddy install
+
+RUN /usr/bin/caddy -version
+RUN /usr/bin/caddy -plugins
 
 EXPOSE 80 443 2015
 VOLUME /etc/caddy
